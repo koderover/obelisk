@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	nurl "net/url"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -102,4 +104,70 @@ func (arc *Archiver) processURL(ctx context.Context, url string, parentURL strin
 	arc.Unlock()
 
 	return bodyContent, contentType, nil
+}
+
+func (arc *Archiver) processPath(ctx context.Context, path string, parentPath string, embedded ...bool) ([]byte, string, error) {
+	// Parse embedded value
+	isEmbedded := len(embedded) != 0 && embedded[0]
+
+	// Make sure this URL is not empty, data or hash. If yes, just skip it.
+	path = strings.TrimSpace(path)
+	if path == "" || strings.HasPrefix(path, "data:") || strings.HasPrefix(path, "#") {
+		return nil, "", errSkippedURL
+	}
+
+	path = filepath.Join(parentPath, path)
+	file, err := os.Open(path)
+	if err != nil {
+		if arc.SkipResourceURLError {
+			return nil, "", errSkippedURL
+		} else {
+			return nil, "", fmt.Errorf("read %s failed: %w", path, err)
+		}
+	}
+
+	// Read content of response body. If the downloaded file is HTML
+	// or CSS it need to be processed again
+	var bodyContent []byte
+	var url = &nurl.URL{Path: path}
+
+	// Get content type
+	contentType := getFileContentType(path)
+	switch {
+	case contentType == "text/html" && isEmbedded:
+		newHTML, err := arc.processHTML(ctx, file, url, false)
+		if err == nil {
+			bodyContent = s2b(newHTML)
+		} else {
+			return nil, "", err
+		}
+
+	case contentType == "text/css":
+		newCSS, err := arc.processCSS(ctx, file, url)
+		if err == nil {
+			bodyContent = s2b(newCSS)
+		} else {
+			return nil, "", err
+		}
+
+	default:
+		bodyContent, err = io.ReadAll(file)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+
+	return bodyContent, contentType, nil
+}
+
+func getFileContentType(path string) string {
+	ext := filepath.Ext(path)
+	contentType := "text/plain"
+	switch ext {
+	case ".html":
+		contentType = "text/html"
+	case ".css":
+		contentType = "text/css"
+	}
+	return contentType
 }
