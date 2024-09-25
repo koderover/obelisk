@@ -50,6 +50,7 @@ type Archiver struct {
 	EnableLog        bool
 	EnableVerboseLog bool
 
+	LocalFile     bool
 	DisableJS     bool
 	DisableCSS    bool
 	DisableEmbeds bool
@@ -110,33 +111,56 @@ func (arc *Archiver) Archive(ctx context.Context, req Request) ([]byte, string, 
 		return nil, "", fmt.Errorf("request url is not specified")
 	}
 
-	url, err := nurl.Parse(req.URL)
-	if err != nil || url.Scheme == "" || url.Hostname() == "" {
+	var (
+		err         error
+		url         *nurl.URL
+		contentType string = "text/html"
+	)
+
+	url, err = nurl.Parse(req.URL)
+	if err != nil {
 		return nil, "", fmt.Errorf("url \"%s\" is not valid", req.URL)
 	}
-	// Set the original url
-	req.origin = url
-	ctx = withOrigin(ctx, req.origin)
-	url = arc.finalURI(url)
-
-	// If needed download page from source URL
-	contentType := "text/html"
-	if req.Input == nil {
-		resp, err := arc.downloadFile(url.String(), "")
+	if url.Scheme == "file" || url.Scheme == "" {
+		arc.LocalFile = true
+		contentType = getFileContentType(url.Path)
+		req.Input, err = os.Open(url.Path)
 		if err != nil {
-			return nil, "", fmt.Errorf("download failed: %w", err)
+			return nil, "", fmt.Errorf("failed to open file: %w", err)
 		}
-		defer resp.Body.Close()
 
-		req.Input = resp.Body
-		contentType = resp.Header.Get("Content-Type")
-	}
+		if !strings.HasPrefix(contentType, "text/html") {
+			content, err := os.ReadFile(url.Path)
+			return content, contentType, err
+		}
+		url.Path = filepath.Dir(url.Path)
+	} else {
+		if url.Scheme == "" || url.Hostname() == "" {
+			return nil, "", fmt.Errorf("url \"%s\" is not valid", req.URL)
+		}
+		// Set the original url
+		req.origin = url
+		ctx = withOrigin(ctx, req.origin)
+		url = arc.finalURI(url)
 
-	// Check the type of the downloaded file.
-	// If it's not HTML, just return it as it is.
-	if !strings.HasPrefix(contentType, "text/html") {
-		content, err := io.ReadAll(req.Input)
-		return content, contentType, err
+		// If needed download page from source URL
+		if req.Input == nil {
+			resp, err := arc.downloadFile(url.String(), "")
+			if err != nil {
+				return nil, "", fmt.Errorf("download failed: %w", err)
+			}
+			defer resp.Body.Close()
+
+			req.Input = resp.Body
+			contentType = resp.Header.Get("Content-Type")
+		}
+
+		// Check the type of the downloaded file.
+		// If it's not HTML, just return it as it is.
+		if !strings.HasPrefix(contentType, "text/html") {
+			content, err := io.ReadAll(req.Input)
+			return content, contentType, err
+		}
 	}
 
 	// If it's HTML process it

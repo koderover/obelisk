@@ -45,14 +45,23 @@ func (arc *Archiver) processCSS(ctx context.Context, input io.Reader, baseURL *n
 	for url := range urls {
 		url := url
 		g.Go(func() error {
+			var (
+				err         error
+				content     []byte
+				contentType string
+				result      string
+			)
+
 			cssURL := sanitizeStyleURL(url)
 			cssURL = createAbsoluteURL(cssURL, baseURL)
-			content, contentType, err := arc.processURL(ctx, cssURL, baseURL.String())
+			if arc.LocalFile {
+				content, contentType, err = arc.processPath(ctx, cssURL, baseURL.Path)
+			} else {
+				content, contentType, err = arc.processURL(ctx, cssURL, baseURL.String())
+			}
 			if err != nil && err != errSkippedURL {
 				return err
 			}
-
-			var result string
 			if err == errSkippedURL {
 				result = `url("` + cssURL + `")`
 			} else {
