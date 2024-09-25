@@ -70,15 +70,18 @@ func (arc *Archiver) processHTML(ctx context.Context, input io.Reader, baseURL *
 		// - Convert relative URL into absolute URL
 		// - Remove subresources integrity attribute from links
 		arc.setContentSecurityPolicy(doc)
-		arc.setSourceURL(ctx, doc, baseURL)
 		arc.addMeta(doc)
 		arc.applyConfiguration(doc)
 		arc.convertNoScriptToDiv(doc, true)
 		arc.removeComments(doc)
 		arc.convertLazyImageAttrs(doc)
-		arc.convertRelativeURLs(doc, baseURL)
 		arc.removeLinkIntegrityAttr(doc)
 		arc.appendTitle(doc)
+
+		if !arc.LocalFile {
+			arc.setSourceURL(ctx, doc, baseURL)
+			arc.convertRelativeURLs(doc, baseURL)
+		}
 	}
 
 	// Find all nodes which might has subresource.
@@ -513,8 +516,18 @@ func (arc *Archiver) processURLNode(ctx context.Context, node *html.Node, attrNa
 		return nil
 	}
 
+	var (
+		err         error
+		content     []byte
+		contentType string
+	)
+
 	url := dom.GetAttribute(node, attrName)
-	content, contentType, err := arc.processURL(ctx, url, baseURL.String())
+	if arc.LocalFile {
+		content, contentType, err = arc.processPath(ctx, url, baseURL.Path)
+	} else {
+		content, contentType, err = arc.processURL(ctx, url, baseURL.String())
+	}
 	if err != nil && err != errSkippedURL {
 		return err
 	}
@@ -557,8 +570,18 @@ func (arc *Archiver) processLinkNode(ctx context.Context, node *html.Node, baseU
 		return arc.processURLNode(ctx, node, "href", baseURL)
 	}
 
+	var (
+		err         error
+		content     []byte
+		contentType string
+	)
+
 	url := dom.GetAttribute(node, "href")
-	content, contentType, err := arc.processURL(ctx, url, baseURL.String())
+	if arc.LocalFile {
+		content, contentType, err = arc.processPath(ctx, url, baseURL.Path)
+	} else {
+		content, contentType, err = arc.processURL(ctx, url, baseURL.String())
+	}
 	if err != nil {
 		if err == errSkippedURL {
 			return nil
@@ -602,8 +625,25 @@ func (arc *Archiver) processScriptNode(ctx context.Context, node *html.Node, bas
 		return nil
 	}
 
+	var (
+		err         error
+		content     []byte
+		contentType string
+	)
 	url := dom.GetAttribute(node, "src")
-	content, contentType, err := arc.processURL(ctx, url, baseURL.String())
+	if arc.LocalFile {
+		parsedURL, err := nurl.Parse(url)
+		if err != nil {
+			return err
+		}
+		if parsedURL.Scheme == "http" || parsedURL.Scheme == "https" {
+			content, contentType, err = arc.processURL(ctx, url, baseURL.String())
+		} else {
+			content, contentType, err = arc.processPath(ctx, url, baseURL.Path)
+		}
+	} else {
+		content, contentType, err = arc.processURL(ctx, url, baseURL.String())
+	}
 	if err != nil {
 		if err == errSkippedURL {
 			return nil
@@ -631,8 +671,17 @@ func (arc *Archiver) processEmbedNode(ctx context.Context, node *html.Node, base
 		return nil
 	}
 
+	var (
+		err         error
+		content     []byte
+		contentType string
+	)
 	url := dom.GetAttribute(node, attrName)
-	content, contentType, err := arc.processURL(ctx, url, baseURL.String())
+	if arc.LocalFile {
+		content, contentType, err = arc.processPath(ctx, url, baseURL.Path)
+	} else {
+		content, contentType, err = arc.processURL(ctx, url, baseURL.String())
+	}
 	if err != nil && err != errSkippedURL {
 		return err
 	}
@@ -667,7 +716,16 @@ func (arc *Archiver) processMediaNode(ctx context.Context, node *html.Node, base
 		oldURL := parts[1]
 		targetWidth := parts[2]
 
-		content, contentType, err := arc.processURL(ctx, oldURL, baseURL.String())
+		var (
+			err         error
+			content     []byte
+			contentType string
+		)
+		if arc.LocalFile {
+			content, contentType, err = arc.processPath(ctx, oldURL, baseURL.Path)
+		} else {
+			content, contentType, err = arc.processURL(ctx, oldURL, baseURL.String())
+		}
 		if err != nil && err != errSkippedURL {
 			return err
 		}
