@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-shiori/obelisk"
+	"github.com/koderover/obelisk"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )

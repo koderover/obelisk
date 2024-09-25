@@ -1,3 +1,4 @@
+//go:build ignore
 // +build ignore
 
 package main
@@ -7,7 +8,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/go-shiori/obelisk"
+	"github.com/koderover/obelisk"
 )
 
 func main() {

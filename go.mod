@@ -1,4 +1,4 @@
-module github.com/go-shiori/obelisk
+module github.com/koderover/obelisk
 
 go 1.21
 
