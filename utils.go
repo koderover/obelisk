@@ -36,6 +36,10 @@ func createAbsoluteURL(url string, base *nurl.URL) string {
 		return url
 	}
 
+	if strings.HasPrefix(url, "./") {
+		return url
+	}
+
 	// If it is already an absolute URL, clean the URL then return it
 	tmp, err := nurl.ParseRequestURI(url)
 	if err == nil && tmp.Scheme != "" && tmp.Hostname() != "" {
